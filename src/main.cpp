@@ -3,19 +3,32 @@ int threshold = 11;
 int touchValue;
 bool isReleased = true;
 
+void getTouch1();
+void getTouch2();
+void getTouch3();
+
 void setup() {
   Serial.begin(115200);
+  touchAttachInterrupt(4, getTouch1, threshold);
+  touchAttachInterrupt(13, getTouch2, threshold);
+  touchAttachInterrupt(15, getTouch3, threshold);
 }
 
-void loop() {
- touchValue = touchRead(4);
+void getTouch1() {
+  Serial.println("Touched 1");
+}
 
- if (touchValue <= threshold && isReleased) {
-  Serial.println("Pin touched");
-  isReleased = false;
- } else if (touchValue > threshold && !isReleased) {
-  Serial.println("Pin released");
-  isReleased = true;
- }
+void getTouch2() {
+  Serial.println("Touched 2");
+}
+
+void getTouch3() {
+  Serial.println("Touched 3");
+}
+
+
+
+void loop() {
+  delay(1000);
 }
 
