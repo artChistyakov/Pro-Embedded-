@@ -1,34 +1,17 @@
-#include <Arduino.h>
-int threshold = 11;
-int touchValue;
-bool isReleased = true;
+#include <Arduino.h>     // Підключення основної бібліотеки Arduino
+unsigned long int timer; // Оголошення змінної для зберігання часу (таймера)
 
-void getTouch1();
-void getTouch2();
-void getTouch3();
-
-void setup() {
-  Serial.begin(115200);
-  touchAttachInterrupt(4, getTouch1, threshold);
-  touchAttachInterrupt(13, getTouch2, threshold);
-  touchAttachInterrupt(15, getTouch3, threshold);
+void setup()
+{
+  Serial.begin(115200); // Ініціалізація послідовного порту на швидкості 115200 бод
+  timer = millis();     // Запис поточного часу в мілісекундах у змінну timer
 }
 
-void getTouch1() {
-  Serial.println("Touched 1");
+void loop()
+{
+  if (millis() - timer >= 100)// Перевірка, чи пройшло 100 мілісекунд з моменту останньої дії
+  {                                                        
+    Serial.println("Touch value:" + (String)touchRead(4)); // Зчитування значення з сенсорного піна 4 та вивід його в монітор порту
+    timer = millis();                                      // Оновлення значення змінної timer поточним часом
+  }
 }
-
-void getTouch2() {
-  Serial.println("Touched 2");
-}
-
-void getTouch3() {
-  Serial.println("Touched 3");
-}
-
-
-
-void loop() {
-  delay(1000);
-}
-
