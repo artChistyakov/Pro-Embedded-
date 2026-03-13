@@ -1,67 +1,69 @@
-#include <Arduino.h> 
-int threshold = 11; // Поріг спрацювання для сенсорних пінів
-volatile unsigned int color = 1; // Змінна поточного режиму кольору (volatile для переривань)
-volatile int brightness = 255; // Змінна поточної яскравості (від 0 до 255)
-volatile unsigned long timer = 0; // Допоміжна змінна часу для обробки брязкоту дотику
-volatile unsigned long changeLastTouch = 0; // Час останнього успішного перемикання кольору
+#include <Arduino.h>
+#include "BluetoothSerial.h"
+#include "esp_bt_device.h"
 
-void changeColor() { 
-  timer = millis(); // Отримання поточного часу в мілісекундах
+BluetoothSerial SerialBT;
 
-  if (timer - changeLastTouch > 200) { // Перевірка, чи минуло 200 мс (захист від хибних спрацювань)
-    color++; // Перехід до наступного колірного режиму
-    if (color > 4) color = 1; // Повернення до першого режиму, якщо значення перевищило 4
-    changeLastTouch  = timer; // Оновлення часу останнього спрацювання
+// Налаштування пінів
+const int servoPin = 4;   // Пін для серво (Завдання 5)
+const int buttonPin = 18; // Пін для кнопки (Завдання 4*)
+
+// Змінні для кнопки (Завдання 4*)
+volatile bool buttonFlag = false;
+
+// Функція-обробник переривання для кнопки
+void IRAM_ATTR handleButtonPress() {
+  buttonFlag = true;
+}
+
+// Функція для отримання MAC-адреси (з твого коду)
+void printDeviceAddress() {
+  const uint8_t* point = esp_bt_dev_get_address();
+  Serial.print("MAC Address: ");
+  for (int i = 0; i < 6; i++) {
+    char str[3];
+    sprintf(str, "%02X", (int)point[i]);
+    Serial.print(str);
+    if (i < 5) Serial.print(":");
   }
-} 
+  Serial.println();
+}
 
-void brightnessHigh() { 
-  brightness += 5; // Збільшення значення яскравості на 5 одиниць
-  if (brightness > 255) brightness = 255; // Обмеження максимального значення яскравості до 255
-} 
-
-void brightnessLow() { 
-  brightness -= 5; // Зменшення значення яскравості на 5 одиниць
-  if (brightness < 0) brightness = 0; // Обмеження мінімального значення яскравості до 0
-} 
-
-void setup() { 
-  pinMode(25, OUTPUT); // Встановлення 25-го піна (Red) як вихід
-  pinMode(26, OUTPUT); // Встановлення 26-го піна (Green) як вихід
-  pinMode(27, OUTPUT); // Встановлення 27-го піна (Blue) як вихід
-
-  touchAttachInterrupt(4, changeColor, threshold); // Прив'язка зміни кольору до сенсорного піна 4
-  touchAttachInterrupt(13, brightnessHigh, threshold); // Прив'язка збільшення яскравості до сенсорного піна 13
-  touchAttachInterrupt(15, brightnessLow, threshold); // Прив'язка зменшення яскравості до сенсорного піна 15
-
-  ledcSetup(0, 5000, 8); // Налаштування ШІМ-каналу 0: частота 5000 Гц, розрядність 8 біт
-  ledcSetup(1, 5000, 8); // Налаштування ШІМ-каналу 1 для другого кольору
-  ledcSetup(2, 5000, 8); // Налаштування ШІМ-каналу 2 для третього кольору
-  ledcAttachPin(25, 0); // Прив'язка 25-го піна до ШІМ-каналу 0
-  ledcAttachPin(26, 1); // Прив'язка 26-го піна до ШІМ-каналу 1
-  ledcAttachPin(27, 2); // Прив'язка 27-го піна до ШІМ-каналу 2
-} 
-
-void selectColor() { 
-  if (color == 1) { // Якщо обрано перший режим (Білий)
-    ledcWrite(0, brightness); // Подати сигнал яскравості на канал 0 (Red)
-    ledcWrite(1, brightness); // Подати сигнал яскравості на канал 1 (Green)
-    ledcWrite(2, brightness); // Подати сигнал яскравості на канал 2 (Blue)
-  }else if (color == 2) { // Якщо обрано другий режим (Червоний)
-    ledcWrite(0, brightness); // Подати яскравість на червоний
-    ledcWrite(1, 0); // Вимкнути зелений
-    ledcWrite(2, 0); // Вимкнути синій
-  }else if (color == 3) { // Якщо обрано третій режим (Зелений)
-    ledcWrite(0, 0); // Вимкнути червоний
-    ledcWrite(1, brightness); // Подати яскравість на зелений
-    ledcWrite(2, 0); // Вимкнути синій
-  }else if (color == 4) { // Якщо обрано четвертий режим (Синій)
-    ledcWrite(0, 0); // Вимкнути червоний
-    ledcWrite(1, 0); // Вимкнути зелений
-    ledcWrite(2, brightness); // Подати яскравість на синій
+// Callback підключення (з твого коду)
+void callback(esp_spp_cb_event_t event, esp_spp_cb_param_t *param) {
+  if (event == ESP_SPP_SRV_OPEN_EVT) {
+    Serial.println("Client Connected");
   }
-} 
+}
 
-void loop() { 
-  selectColor(); // Постійний виклик функції оновлення стану світлодіода
-} 
+void setup() {
+  Serial.begin(115200);
+
+  // Ініціалізація Bluetooth (Завдання 2)
+  if (!SerialBT.begin("ESP32_Pro")) {
+    Serial.println("An error occurred initializing Bluetooth");
+  } else {
+    Serial.println("Bluetooth initialized");
+  }
+
+  printDeviceAddress();
+  SerialBT.register_callback(callback);
+  SerialBT.setTimeout(10); // Невелика затримка для стабільного зчитування
+}
+
+void loop() {
+  // 1. Відправка повідомлення з ПК на ТЕЛЕФОН (Слайд 28)
+  if (Serial.available()) {
+    String value = Serial.readString(); // Зчитуємо з монітора порту
+    Serial.println("      Me: " + value);
+    SerialBT.println(value);            // Відправляємо в Bluetooth
+  }
+
+  // 2. Приймання даних з ТЕЛЕФОНУ (Слайд 28)
+  if (SerialBT.available()) {
+    String valueStr = SerialBT.readString(); // Зчитуємо те, що прислав Android
+    Serial.println("Android: " + valueStr);
+  }
+  
+  // Прибери delay(1000)! Перевірка має бути миттєвою.
+}
