@@ -1,69 +1,73 @@
 #include <Arduino.h>
-#include "BluetoothSerial.h"
-#include "esp_bt_device.h"
+#include <WiFi.h>
+#include <ESPAsyncWebServer.h>
+#include <SPIFFS.h>
+#include <DHT.h>
 
-BluetoothSerial SerialBT;
+const char* ssid = "Lana";           // Твій Wi-Fi
+const char* password = "0506153641"; // Твій пароль
 
-// Налаштування пінів
-const int servoPin = 4;   // Пін для серво (Завдання 5)
-const int buttonPin = 18; // Пін для кнопки (Завдання 4*)
 
-// Змінні для кнопки (Завдання 4*)
-volatile bool buttonFlag = false;
+DHT dht(13, DHT11);
 
-// Функція-обробник переривання для кнопки
-void IRAM_ATTR handleButtonPress() {
-  buttonFlag = true;
-}
+// Створюємо асинхронний сервер на 80 порту
+AsyncWebServer server(80);
 
-// Функція для отримання MAC-адреси (з твого коду)
-void printDeviceAddress() {
-  const uint8_t* point = esp_bt_dev_get_address();
-  Serial.print("MAC Address: ");
-  for (int i = 0; i < 6; i++) {
-    char str[3];
-    sprintf(str, "%02X", (int)point[i]);
-    Serial.print(str);
-    if (i < 5) Serial.print(":");
+// --- МАГІЧНА ФУНКЦІЯ ЗАМІНИ ТЕКСТУ ---
+// Коли сервер надсилає HTML файл, він шукає слова між символами %...%
+// і замінює їх на те, що поверне ця функція.
+String processor(const String& var) {
+  if (var == "TEMPERATURE") {
+    float t = dht.readTemperature();
+    if (isnan(t)) return "Error";
+    return String(t, 1); // 1 знак після коми
   }
-  Serial.println();
-}
-
-// Callback підключення (з твого коду)
-void callback(esp_spp_cb_event_t event, esp_spp_cb_param_t *param) {
-  if (event == ESP_SPP_SRV_OPEN_EVT) {
-    Serial.println("Client Connected");
+  else if (var == "HUMIDITY") {
+    float h = dht.readHumidity();
+    if (isnan(h)) return "Error";
+    return String(h, 1);
   }
+  return String(); // Якщо нічого не знайшли, повертаємо порожнечу
 }
 
 void setup() {
   Serial.begin(115200);
+  dht.begin();
 
-  // Ініціалізація Bluetooth (Завдання 2)
-  if (!SerialBT.begin("ESP32_Pro")) {
-    Serial.println("An error occurred initializing Bluetooth");
-  } else {
-    Serial.println("Bluetooth initialized");
+  // 1. Запускаємо файлову систему (нашу "флешку")
+  if (!SPIFFS.begin(true)) {
+    Serial.println("Помилка монтування SPIFFS!");
+    return;
   }
 
-  printDeviceAddress();
-  SerialBT.register_callback(callback);
-  SerialBT.setTimeout(10); // Невелика затримка для стабільного зчитування
+  // 2. Підключаємося до Wi-Fi
+  WiFi.begin(ssid, password);
+  Serial.print("Підключення до Wi-Fi");
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println("\nПідключено! IP адреса:");
+  Serial.println(WiFi.localIP());
+
+  // 3. НАЛАШТУВАННЯ МАРШРУТІВ СЕРВЕРА 
+  server.on("/", HTTP_GET,[](AsyncWebServerRequest *request){
+    request->send(SPIFFS, "/index.html", String(), false, processor);
+  });
+
+  server.on("/style.css", HTTP_GET,[](AsyncWebServerRequest *request){
+    request->send(SPIFFS, "/style.css", "text/css");
+  });
+
+  server.on("/temp.png", HTTP_GET,[](AsyncWebServerRequest *request){
+    request->send(SPIFFS, "/temp.png", "image/png");
+  });
+
+  server.begin();
+  Serial.println("Асинхронний сервер запущено!");
 }
 
 void loop() {
-  // 1. Відправка повідомлення з ПК на ТЕЛЕФОН (Слайд 28)
-  if (Serial.available()) {
-    String value = Serial.readString(); // Зчитуємо з монітора порту
-    Serial.println("      Me: " + value);
-    SerialBT.println(value);            // Відправляємо в Bluetooth
-  }
-
-  // 2. Приймання даних з ТЕЛЕФОНУ (Слайд 28)
-  if (SerialBT.available()) {
-    String valueStr = SerialBT.readString(); // Зчитуємо те, що прислав Android
-    Serial.println("Android: " + valueStr);
-  }
-  
-  // Прибери delay(1000)! Перевірка має бути миттєвою.
+  // Асинхронний сервер працює сам у фоні на перериваннях.
+  // loop() залишається абсолютно порожнім! Ти можеш додати сюди будь-що інше.
 }

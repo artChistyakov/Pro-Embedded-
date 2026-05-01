@@ -6,5 +6,4 @@
 include/
 lib/
 test/
-platformio.ini
 .vscode/extensions.json
