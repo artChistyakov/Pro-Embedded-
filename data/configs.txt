@@ -1,0 +1,2 @@
+STAssid=Lana
+STApass=0506153641
